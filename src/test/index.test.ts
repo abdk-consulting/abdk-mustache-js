@@ -444,6 +444,18 @@ describe("renderCompiledAsync", () => {
       process.removeListener("unhandledRejection", handler);
     }
   });
+
+  it("resolves async function returning object with async function properties", async () => {
+    const view = {
+      user: async () => ({
+        name: async () => "Alice",
+      }),
+    };
+    assert.equal(
+      await renderCompiledAsync(compile("{{#user}}{{name}}{{/user}}"), view),
+      "Alice"
+    );
+  });
 });
 
 describe("renderAsync", () => {
@@ -497,6 +509,17 @@ describe("renderAsync", () => {
     await assert.rejects(
       renderAsync("{{val}}", { val: boom }),
       /async failure/
+    );
+  });
+
+  it("resolves async function returning object with async function properties", async () => {
+    assert.equal(
+      await renderAsync("{{#user}}{{name}}{{/user}}", {
+        user: async () => ({
+          name: async () => "Alice",
+        }),
+      }),
+      "Alice"
     );
   });
 });

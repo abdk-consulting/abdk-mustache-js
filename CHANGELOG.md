@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] — 2026-04-11
+
+### Fixed
+
+- `renderCompiledAsync` / `renderAsync`: async view functions that resolve to
+  an object whose properties are themselves async functions were not resolved
+  correctly — the inner functions were returned as raw `Promise` objects instead
+  of being awaited. Resolved values are now recursively wrapped so nested async
+  properties are discovered and awaited in subsequent render iterations.
+
+---
+
 ## [1.0.0] — 2026-04-11
 
 ### Added
@@ -30,4 +42,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero runtime dependencies
 - TypeScript declarations included
 
+[1.0.1]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.1
 [1.0.0]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.0

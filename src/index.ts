@@ -223,7 +223,7 @@ export async function renderCompiledAsync(
       return Object.fromEntries(Object.entries(view).map(([key, value]) =>
         [key, wrapView(value)]));
     else if (typeof view === "function") {
-      if (values.has(view)) return values.get(view);
+      if (values.has(view)) return wrapView(values.get(view));
       else if (pendingValues.has(view)) return null;
       else {
         const promise = Promise.resolve(view());
@@ -235,7 +235,7 @@ export async function renderCompiledAsync(
           // Rejection is handled by Promise.all in the render loop;
           // suppress the unhandled rejection on this detached chain.
         });
-        return values.has(view) ? values.get(view) : null;
+        return values.has(view) ? wrapView(values.get(view)) : null;
       }
     } else return view;
   };
