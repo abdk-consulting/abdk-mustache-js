@@ -344,6 +344,14 @@ describe("renderCompiledAsync", () => {
     );
   });
 
+  it("doesn't call unused async functions", async () => {
+    const view = { name: async () => "Alice", unused: async () => { throw new Error("should not be called"); } };
+    assert.equal(
+      await renderCompiledAsync(compile("Hello, {{name}}!"), view),
+      "Hello, Alice!"
+    );
+  });
+
   it("resolves multiple async function values", async () => {
     const view = {
       first: async () => "John",

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.3] — 2026-04-11
+
+### Fixed
+
+- `renderCompiledAsync` / `renderAsync`: `wrapView` was calling async view
+  functions **eagerly** at wrap time and returning `null` directly to
+  Mustache.js instead of returning a callable wrapper function.  As a result,
+  every async function in the view was always rendered as an empty string,
+  regardless of its resolved value, and every async function — including unused
+  ones — was invoked unconditionally.  `wrapView` now returns a proper wrapper
+  function registered in `wrappedValues`; the underlying async function is only
+  called when Mustache.js actually invokes it during rendering.
+
+---
+
 ## [1.0.2] — 2026-04-11
 
 ### Fixed

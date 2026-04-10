@@ -233,20 +233,24 @@ export async function renderCompiledAsync(
         wrappedObject[key] = wrapView(view[key]);
       return wrappedObject;
     } else if (typeof view === "function") {
-      if (values.has(view)) return wrapView(values.get(view));
-      else if (pendingValues.has(view)) return null;
-      else {
-        const promise = Promise.resolve(view());
-        pendingValues.set(view, promise);
-        promise.then(value => {
-          values.set(view, value);
-          pendingValues.delete(view);
-        }).catch(() => {
-          // Rejection is handled by Promise.all in the render loop;
-          // suppress the unhandled rejection on this detached chain.
-        });
-        return values.has(view) ? wrapView(values.get(view)) : null;
-      }
+      const wrappedFunction = () => {
+        if (values.has(view)) return wrapView(values.get(view));
+        else if (pendingValues.has(view)) return null;
+        else {
+          const promise = Promise.resolve(view());
+          pendingValues.set(view, promise);
+          promise.then(value => {
+            values.set(view, value);
+            pendingValues.delete(view);
+          }).catch(() => {
+            // Rejection is handled by Promise.all in the render loop;
+            // suppress the unhandled rejection on this detached chain.
+          });
+          return values.has(view) ? wrapView(values.get(view)) : null;
+        }
+      };
+      wrappedValues.set(view, wrappedFunction);
+      return wrappedFunction;
     } else return view;
   };
 
