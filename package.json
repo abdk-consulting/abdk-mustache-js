@@ -1,0 +1,45 @@
+{
+  "name": "abdk-mustache-js",
+  "version": "1.0.0",
+  "description": "Mustache Template Engine for JavaScript by ABDK Consulting",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map",
+    "src/index.ts",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "build:watch": "tsc --project tsconfig.json --watch",
+    "test": "npm run build && node --test dist/test/index.test.js",
+    "lint": "tsc --project tsconfig.json --noEmit",
+    "prepublishOnly": "npm run build && npm test",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "mustache",
+    "template"
+  ],
+  "author": "ABDK Consulting",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abdk-consulting/abdk-mustache-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abdk-consulting/abdk-mustache-js/issues"
+  },
+  "homepage": "https://github.com/abdk-consulting/abdk-mustache-js#readme",
+  "devDependencies": {
+    "@types/node": "20.0.0",
+    "typescript": "6.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

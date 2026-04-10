@@ -1,0 +1,2 @@
+# Exclude test artifacts from the published npm package
+dist/test/
