@@ -214,15 +214,25 @@ export async function renderCompiledAsync(
   partials: { [name: string]: () => Promise<CompiledTemplate> } = {},
   escape: (string: string) => string = escapeHTML
 ): Promise<string> {
+  const wrappedValues = new Map<any, any>();
   const values = new Map<Function, any>();
   const pendingValues = new Map<Function, Promise<any>>();
 
   const wrapView = (view: any): any => {
-    if (Array.isArray(view)) return view.map(wrapView);
-    else if (view && typeof view === "object")
-      return Object.fromEntries(Object.entries(view).map(([key, value]) =>
-        [key, wrapView(value)]));
-    else if (typeof view === "function") {
+    if (wrappedValues.has(view)) return wrappedValues.get(view);
+    else if (Array.isArray(view)) {
+      const wrappedArray = [] as any[];
+      wrappedValues.set(view, wrappedArray);
+      for (const item of view) wrappedArray.push(wrapView(item));
+      return wrappedArray;
+    }
+    else if (view && typeof view === "object") {
+      const wrappedObject = {} as any;
+      wrappedValues.set(view, wrappedObject);
+      for (const key of Object.keys(view))
+        wrappedObject[key] = wrapView(view[key]);
+      return wrappedObject;
+    } else if (typeof view === "function") {
       if (values.has(view)) return wrapView(values.get(view));
       else if (pendingValues.has(view)) return null;
       else {
@@ -277,6 +287,8 @@ export async function renderCompiledAsync(
       ...pendingValues.values(),
       ...Object.values(pendingPartials)
     ]);
+    pendingValues.clear();
+    wrappedValues.clear();
   }
 }
 

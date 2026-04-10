@@ -456,6 +456,33 @@ describe("renderCompiledAsync", () => {
       "Alice"
     );
   });
+
+  it("resolves circular-linked view", async () => {
+    const foo = { bar: null as any, name: "foo" };
+    const bar = { foo, name: "bar" };
+    foo.bar = bar;
+    const view = {
+      foo,
+      bar
+    };
+    assert.equal(
+      await renderCompiledAsync(compile("{{foo.name}},{{foo.bar.name}},{{bar.foo.name}}"), view),
+      "foo,bar,foo"
+    );
+  });
+
+  it("resolves circular-linked view via arrays", async () => {
+    const foo = { array: [] as any[], name: "foo" };
+    foo.array.push(foo);
+
+    const view = {
+      foo
+    };
+    assert.equal(
+      await renderCompiledAsync(compile("{{#foo.array}}{{name}}{{/foo.array}}"), view),
+      "foo"
+    );
+  });
 });
 
 describe("renderAsync", () => {
