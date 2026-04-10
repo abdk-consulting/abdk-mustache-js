@@ -11,7 +11,8 @@
     "dist/index.d.ts.map",
     "src/index.ts",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc --project tsconfig.json",
