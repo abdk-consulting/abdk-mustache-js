@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.8] — 2026-04-11
+
+### Changed
+
+- **Tag-regexp refactored to use named capture groups** — `compileTagRegExp`
+  now builds the pattern by concatenating named-group fragments for each tag
+  type (`ld`/`rd` for set-delimiter, `sec`, `isec`, `esec`, `uvarb`, `uvara`,
+  `dpt`, `pt`, `bl`, `dpn`, `pn`, `var`, and an unnamed comment branch) rather
+  than composing a single monolithic pattern and running a secondary tag-content
+  regex over every match.  Downstream code now reads capture groups by name
+  (`groups?.sec`, `groups?.pt`, …) instead of by positional index.  No
+  behavioural change.
+
+- **Standalone-tag handling refactored into dedicated helpers** — the
+  standalone-detection and template-advance logic that was previously inlined
+  inside the main dispatch block has been extracted into four small, focused
+  helpers:
+  - `advance(left, right)` — emits the literal text between `index` and `left`,
+    then moves `index` to `right`.
+  - `inline()` — calls `advance` with the exact tag boundaries (no standalone
+    treatment).
+  - `checkStandalone()` — returns `null` when the tag is not standalone, or a
+    `{ left, right, next }` bounds object when it is (where `next` is the
+    position after the trailing newline, computed via a single regex rather than
+    the previous character-by-character loop).
+  - `standalone()` — advances over the full standalone line (leading whitespace
+    through trailing newline) when standalone, falls back to `inline()`.
+  - `indent()` — like `standalone()` but returns the leading-whitespace
+    indentation string for use by partial tags, or `null` for non-standalone
+    partials.
+
+  Each tag type now calls the appropriate helper explicitly, making the
+  intended standalone/inline contract of every tag type immediately visible at
+  the call site.  No behavioural change.
+
+---
+
 ## [1.0.7] — 2026-04-11
 
 ### Changed
