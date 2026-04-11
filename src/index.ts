@@ -15,10 +15,39 @@ function escapeRegExp(string: string): string {
 }
 
 function compileTagRegExp(leftDelimiter: string, rightDelimiter: string): RegExp {
-  const escapedLeftDelimiter = escapeRegExp(leftDelimiter);
-  const escapedRightDelimiter = escapeRegExp(rightDelimiter);
-  return new RegExp(`${escapedLeftDelimiter}\\s*(\\{[^}]*\\}\\s*|[^{\\s][\\s\\S]*?)${escapedRightDelimiter}`,
-    "g");
+  let regExp = "";
+  regExp += escapeRegExp(leftDelimiter);
+  regExp += "\\s*";
+  regExp += "(?:";
+  regExp += "=\\s*(?<ld>[^=\\s]+)\\s+(?<rd>[^=\\s]+)\\s*="; // Delimiters
+  regExp += "|";
+  regExp += "#\\s*(?<sec>\\S+?)"; // Section
+  regExp += "|";
+  regExp += "\\^\\s*(?<isec>\\S+?)"; // Inverted Section
+  regExp += "|";
+  regExp += "/\\s*(?<esec>\\S+?)"; // End Section
+  regExp += "|";
+  regExp += "\\{\\s*(?<uvarb>\\S+?)\\s*\\}"; // Unescaped variable with {}
+  regExp += "|";
+  regExp += "&\\s*(?<uvara>\\S+?)"; // Unescaped variable with &
+  regExp += "|";
+  regExp += "![\\s\\S]*?"; // Comment
+  regExp += "|";
+  regExp += ">\\s*\\*\\s*(?<dpt>\\S+?)"; // Dynamic Partial
+  regExp += "|";
+  regExp += ">\\s*(?<pt>\\S+?)"; // Partial
+  regExp += "|";
+  regExp += "\\$\\s*(?<bl>\\S+?)"; // Block
+  regExp += "|";
+  regExp += "<\\s*\\*\\s*(?<dpn>\\S+?)"; // Dynamic Parent
+  regExp += "|";
+  regExp += "<\\s*(?<pn>\\S+?)"; // Parent
+  regExp += "|";
+  regExp += "(?<var>\\S+?)"; // Variable
+  regExp += ")";
+  regExp += "\\s*?";
+  regExp += escapeRegExp(rightDelimiter);
+  return new RegExp(regExp, "g");
 }
 
 export type CompiledTemplate = (
@@ -62,13 +91,11 @@ export function compile(template: string): CompiledTemplate {
     tagRegExp.lastIndex = index;
     const match = tagRegExp.exec(template);
     if (!match) break;
-    const tag = match[1].trim();
-    const tagMatch = tag.match(/^(?:=\s*([^=\s]+)\s+([^=\s]+)\s*=|#\s*(\S+)|\^\s*(\S+)|\/\s*(\S+)|\{\s*(\S+)\s*\}|&\s*(\S+)|![\s\S]*|>\s*\*\s*(\S+)|>\s*(\S+)|\$\s*(\S+)|<\s*\*\s*(\S+)|<\s*(\S+)|\s*(\S+))$/);
-    if (!tagMatch) throw new Error(`Invalid tag: ${tag}`);
+    const groups = match.groups;
     let left = match.index;
     let right = tagRegExp.lastIndex;
     let isStandalone = false;
-    if (!tagMatch[6] && !tagMatch[7] && !tagMatch[13]) { // Standalone tags
+    if (!groups?.uvarb && !groups?.uvara && !groups?.var) {
       isStandalone = true;
       while (left > 0) {
         const ch = template[left - 1];
@@ -101,39 +128,39 @@ export function compile(template: string): CompiledTemplate {
     if (!inParent && match.index > index)
       code += `r+=${quoteString(template.slice(index, left))};`;
     index = right;
-    if (tagMatch[1] && tagMatch[2]) { // Set delimiters
-      tagRegExp = compileTagRegExp(tagMatch[1], tagMatch[2]);
-    } else if (tagMatch[3]) { // Section
+    if (groups?.ld && groups?.rd) { // Set delimiters
+      tagRegExp = compileTagRegExp(groups.ld, groups.rd);
+    } else if (groups?.sec) { // Section
       if (inParent) throw new Error("Sections cannot be nested inside parents");
-      resolve(tagMatch[3]);
+      resolve(groups.sec);
       code += `x=a(x);`;
       code += `for(const i of x){v.unshift(i);`;
-      stack.push([tagMatch[3], () => code += `v.shift();}`]);
-    } else if (tagMatch[4]) { // Inverted section
+      stack.push([groups.sec, () => code += `v.shift();}`]);
+    } else if (groups?.isec) { // Inverted section
       if (inParent) throw new Error("Sections cannot be nested inside parents");
-      resolve(tagMatch[4]);
+      resolve(groups.isec);
       code += `if(!a(x).length){`;
-      stack.push([tagMatch[4], () => code += `}`]);
-    } else if (tagMatch[5]) { // End section
+      stack.push([groups.isec, () => code += `}`]);
+    } else if (groups?.esec) { // End section
       const [startTag, endCode] = stack.pop()
-        || throwError(Error("Unmatched end tag: " + tagMatch[5]));
-      if (startTag !== tagMatch[5])
-        throw new Error(`Unmatched end tag: ${startTag} -> ${tagMatch[5]}`);
+        || throwError(Error("Unmatched end tag: " + groups.esec));
+      if (startTag !== groups.esec)
+        throw new Error(`Unmatched end tag: ${startTag} -> ${groups.esec}`);
       endCode();
-    } else if (tagMatch[6]) { // Unescaped variable with {{{}}}
+    } else if (groups?.uvarb) { // Unescaped variable with {{{}}}
       if (inParent)
         throw new Error("Variables cannot be nested inside parents");
-      resolve(tagMatch[6]);
+      resolve(groups.uvarb);
       code += `r+=s(x);`;
-    } else if (tagMatch[7]) { // Unescaped variable with {{& }}
+    } else if (groups?.uvara) { // Unescaped variable with {{& }}
       if (inParent)
         throw new Error("Variables cannot be nested inside parents");
-      resolve(tagMatch[7]);
+      resolve(groups.uvara);
       code += `r+=s(x);`;
-    } else if (tagMatch[8]) { // Dynamic partial
+    } else if (groups?.dpt) { // Dynamic partial
       if (inParent)
         throw new Error("Partials cannot be nested inside parents");
-      resolve(tagMatch[8]);
+      resolve(groups.dpt);
       code += `x=P(x);`;
       if (isStandalone) {
         if (left < match.index) {
@@ -142,9 +169,9 @@ export function compile(template: string): CompiledTemplate {
         } else code += `r+=x?x(v,p,{},e):"";`;
         while (template[index - 1].match(/[\n\r]/)) index--;
       } else code += `r+=x?x(v,p,{},e):"";`;
-    } else if (tagMatch[9]) { // Partial
+    } else if (groups?.pt) { // Partial
       if (inParent) throw new Error("Partials cannot be nested inside parents");
-      code += `x=P(${quoteString(tagMatch[9])});`;
+      code += `x=P(${quoteString(groups.pt)});`;
       if (isStandalone) {
         if (left < match.index) {
           const indentation = template.slice(left, match.index);
@@ -152,43 +179,43 @@ export function compile(template: string): CompiledTemplate {
         } else code += `r+=x?x(v,p,{},e):"";`;
         while (template[index - 1].match(/[\n\r]/)) index--;
       } else code += `r+=x?x(v,p,{},e):"";`;
-    } else if (tagMatch[10]) { // Block
+    } else if (groups?.bl) { // Block
       if (inParent) {
-        if (isIdentifier(tagMatch[10]))
-          code += `${tagMatch[10]}`;
-        else code += `${quoteString(tagMatch[10])}`;
+        if (isIdentifier(groups.bl))
+          code += `${groups.bl}`;
+        else code += `${quoteString(groups.bl)}`;
         code += `:()=>{let r="";`;
         inParent = false;
-        stack.push([tagMatch[10], () => {
+        stack.push([groups.bl, () => {
           code += `return r;},`;
           inParent = true;
         }]);
       } else {
-        if (isIdentifier(tagMatch[10]))
-          code += `x=b.${tagMatch[10]};`;
-        else code += `x=b[${quoteString(tagMatch[10])}];`;
+        if (isIdentifier(groups.bl))
+          code += `x=b.${groups.bl};`;
+        else code += `x=b[${quoteString(groups.bl)}];`;
         code += `if(x)r+=x();else{`;
-        stack.push([tagMatch[10], () => code += `}`]);
+        stack.push([groups.bl, () => code += `}`]);
       }
-    } else if (tagMatch[11]) { // Dynamic Parent
+    } else if (groups?.dpn) { // Dynamic Parent
       if (inParent) throw new Error("Parents cannot be nested inside parents");
-      resolve(tagMatch[11]);
+      resolve(groups.dpn);
       code += `x=P(x);`;
       code += `if(x)r+=x(v,p,{`;
-      stack.push([tagMatch[11], () => code += `},e);`]);
-    } else if (tagMatch[12]) { // Parent
+      stack.push([groups.dpn, () => code += `},e);`]);
+    } else if (groups?.pn) { // Parent
       if (inParent) throw new Error("Parents cannot be nested inside parents");
-      code += `x=P(${quoteString(tagMatch[12])});`;
+      code += `x=P(${quoteString(groups.pn)});`;
       code += `if(x)r+=x(v,p,{`;
       inParent = true;
-      stack.push([tagMatch[12], () => {
+      stack.push([groups.pn, () => {
         code += `},e);`;
         inParent = false;
       }]);
-    } else if (tagMatch[13]) { // Variable
+    } else if (groups?.var) { // Variable
       if (inParent)
         throw new Error("Variables cannot be nested inside parents");
-      resolve(tagMatch[13]);
+      resolve(groups.var);
       code += `r+=S(x);`;
     } else {
       // Comment, do nothing
