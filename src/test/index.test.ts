@@ -218,9 +218,203 @@ describe("compile", () => {
     });
   });
 
+  // Inside a {{< parent}} body only comments, plain text, set-delimiter tags,
+  // and block override tags ({{$ … }}) are valid. Everything else is a compile-
+  // time error or is silently discarded.
+  describe("parent content rules", () => {
+    // --- Silently ignored ---
+
+    it("plain text inside parent is silently ignored", () => {
+      const parent = compile("{{$block}}Default{{/block}}");
+      const child = compile("{{< parent}}ignored text{{$block}}Override{{/block}}{{/parent}}");
+      assert.equal(child([{}], { parent }, {}, escape), "Override");
+    });
+
+    it("comment inside parent is silently ignored", () => {
+      const parent = compile("{{$block}}Default{{/block}}");
+      const child = compile("{{< parent}}{{! this comment is ignored }}{{$block}}Override{{/block}}{{/parent}}");
+      assert.equal(child([{}], { parent }, {}, escape), "Override");
+    });
+
+    // --- Set-delimiter is processed ---
+
+    it("set-delimiter tag inside parent changes the active delimiters", () => {
+      // After {{=[ ]=}} the rest of the parent body uses [ ] as delimiters.
+      // Block close uses [/block] (no $), just like {{/block}} outside parents.
+      const parent = compile("{{$block}}Default{{/block}}");
+      const child = compile("{{< parent}}{{=[ ]=}}[$block]Override[/block][/parent]");
+      assert.equal(child([{}], { parent }, {}, escape), "Override");
+    });
+
+    it("different blocks inside one parent can use different delimiters", () => {
+      // Switch to [ ] for block a, then back to {{ }} for block b.
+      const parent = compile("{{$a}}A{{/a}}|{{$b}}B{{/b}}");
+      const child = compile("{{< parent}}{{=[ ]=}}[$a]X[/a][={{ }}=]{{$b}}Y{{/b}}{{/parent}}");
+      assert.equal(child([{}], { parent }, {}, escape), "X|Y");
+    });
+
+    // --- Forbidden tags throw at compile time ---
+
+    it("section inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{#section}}text{{/section}}{{/parent}}"),
+        /Sections cannot be nested inside parents/
+      );
+    });
+
+    it("inverted section inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{^section}}text{{/section}}{{/parent}}"),
+        /Sections cannot be nested inside parents/
+      );
+    });
+
+    it("variable inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{name}}{{/parent}}"),
+        /Variables cannot be nested inside parents/
+      );
+    });
+
+    it("unescaped variable {{{…}}} inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{{name}}}{{/parent}}"),
+        /Variables cannot be nested inside parents/
+      );
+    });
+
+    it("unescaped variable {{& …}} inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{& name}}{{/parent}}"),
+        /Variables cannot be nested inside parents/
+      );
+    });
+
+    it("partial inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{> partial}}{{/parent}}"),
+        /Partials cannot be nested inside parents/
+      );
+    });
+
+    it("dynamic partial inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< parent}}{{> *name}}{{/parent}}"),
+        /Partials cannot be nested inside parents/
+      );
+    });
+
+    it("nested static parent inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< outer}}{{< inner}}{{/inner}}{{/outer}}"),
+        /Parents cannot be nested inside parents/
+      );
+    });
+
+    it("nested dynamic parent inside parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< outer}}{{< *name}}{{/*name}}{{/outer}}"),
+        /Parents cannot be nested inside parents/
+      );
+    });
+  });
+
   describe("set delimiters", () => {
     it("supports custom delimiters", () => {
       assert.equal(render("{{=<% %>=}}<%name%>", { name: "Dave" }), "Dave");
+    });
+  });
+
+  // Whitespace is permitted in three positions inside any tag:
+  //   1. Before the sigil:  {{ #name }}  — stripped by \s* in the outer tag regex
+  //   2. After the sigil:   {{# name }}  — allowed by \s* in each sigil's sub-pattern
+  //   3. Both:              {{ # name }}
+  // This applies to all tag types.
+  describe("whitespace inside tags", () => {
+    it("variable: multiple spaces around name", () => {
+      assert.equal(render("{{  name  }}", { name: "Alice" }), "Alice");
+    });
+
+    it("section: whitespace after sigil", () => {
+      assert.equal(render("{{# show }}yes{{/ show }}", { show: true }), "yes");
+    });
+
+    it("section: whitespace before sigil", () => {
+      assert.equal(render("{{ #show }}yes{{ /show }}", { show: true }), "yes");
+    });
+
+    it("section: whitespace both before and after sigil", () => {
+      assert.equal(render("{{ # show }}yes{{ / show }}", { show: true }), "yes");
+    });
+
+    it("inverted section: whitespace after sigil", () => {
+      assert.equal(render("{{^ empty }}no{{/ empty }}", { empty: false }), "no");
+    });
+
+    it("inverted section: whitespace before sigil", () => {
+      assert.equal(render("{{ ^empty }}no{{ /empty }}", { empty: false }), "no");
+    });
+
+    it("unescaped {{{}}}: whitespace around name", () => {
+      assert.equal(render("{{{  html  }}}", { html: "<b>" }), "<b>");
+    });
+
+    it("unescaped {{&}}: whitespace after sigil", () => {
+      assert.equal(render("{{&  html }}", { html: "<b>" }), "<b>");
+    });
+
+    it("unescaped {{&}}: whitespace before sigil", () => {
+      assert.equal(render("{{ & html }}", { html: "<b>" }), "<b>");
+    });
+
+    it("partial: whitespace after sigil", () => {
+      const greeting = compile("Hi!");
+      assert.equal(render("{{>  greeting }}", {}, { greeting }), "Hi!");
+    });
+
+    it("partial: whitespace before sigil", () => {
+      const greeting = compile("Hi!");
+      assert.equal(render("{{ > greeting }}", {}, { greeting }), "Hi!");
+    });
+
+    it("dynamic partial: whitespace around * sigil", () => {
+      const tmpl = compile("Hi!");
+      assert.equal(render("{{> * tplName }}", { tplName: "tmpl" }, { tmpl }), "Hi!");
+    });
+
+    it("block open/close: whitespace after sigil", () => {
+      const t = compile("{{$ title }}Default{{/ title }}");
+      assert.equal(t([{}], {}, {}, escape), "Default");
+    });
+
+    it("block open/close: whitespace before sigil", () => {
+      const t = compile("{{ $title }}Override{{ /title }}");
+      const parent = compile("{{$ title }}Default{{/ title }}");
+      assert.equal(t([{}], {}, { title: () => "Override" }, escape), "Override");
+    });
+
+    it("parent: whitespace after sigil", () => {
+      const parent = compile("{{$ block }}Default{{/ block }}");
+      const child = compile("{{< parent }}{{$ block }}Override{{/ block }}{{/ parent }}");
+      assert.equal(child([{}], { parent }, {}, escape), "Override");
+    });
+
+    it("parent: whitespace before sigil", () => {
+      const parent = compile("{{$ block }}Default{{/ block }}");
+      const child = compile("{{ <parent }}{{ $block }}Override{{ /block }}{{ /parent }}");
+      assert.equal(child([{}], { parent }, {}, escape), "Override");
+    });
+
+    it("set delimiter: whitespace after = sigil", () => {
+      assert.equal(render("{{= [ ] =}}[ name ]", { name: "Bob" }), "Bob");
+    });
+
+    it("set delimiter: whitespace before = sigil", () => {
+      assert.equal(render("{{ =[ ]=}}[ name ]", { name: "Bob" }), "Bob");
+    });
+
+    it("comment: whitespace before ! sigil is allowed", () => {
+      assert.equal(render("Hello{{ ! ignored }}, World!", {}), "Hello, World!");
     });
   });
 
@@ -285,6 +479,21 @@ describe("renderCompiled", () => {
     );
   });
 
+  it("accepts a loader function for partials", () => {
+    const greeting = compile("Hi, {{name}}!");
+    assert.equal(
+      renderCompiled(compile("{{> greeting}}"), { name: "Alice" }, (name) => name === "greeting" ? greeting : null),
+      "Hi, Alice!"
+    );
+  });
+
+  it("returns empty string for a partial when loader returns null", () => {
+    assert.equal(
+      renderCompiled(compile("{{> missing}}"), {}, (_name) => null),
+      ""
+    );
+  });
+
   it("renders zero correctly", () => {
     assert.equal(renderCompiled(compile("{{n}}"), { n: 0 }), "0");
   });
@@ -321,6 +530,13 @@ describe("render", () => {
     // is per-call, so this just checks consistent output
     assert.equal(renderFn("{{> greeting}}", { name: "A" }, partials), "Hi, A!");
     assert.equal(renderFn("{{> greeting}}", { name: "B" }, partials), "Hi, B!");
+  });
+
+  it("accepts a loader function for string partials", () => {
+    assert.equal(
+      renderFn("{{> greeting}}", { name: "Bob" }, (name) => name === "greeting" ? "Hi, {{name}}!" : null),
+      "Hi, Bob!"
+    );
   });
 
   it("renders zero correctly", () => {
@@ -385,19 +601,30 @@ describe("renderCompiledAsync", () => {
     );
   });
 
-  it("passes compiled partials as thunks", async () => {
+  it("passes pre-compiled partials as a plain object", async () => {
     const greeting = compile("Hi, {{name}}!");
     assert.equal(
-      await renderCompiledAsync(compile("{{> greeting}}"), { name: "Carol" }, { greeting: async () => greeting }),
+      await renderCompiledAsync(compile("{{> greeting}}"), { name: "Carol" }, { greeting }),
       "Hi, Carol!"
     );
   });
 
-  it("lazily loads an async partial", async () => {
-    let loadCount = 0;
-    const loadGreeting = async () => { loadCount++; return compile("Hello, {{name}}!"); };
+  it("accepts a loader function for partials", async () => {
+    const greeting = compile("Hi, {{name}}!");
     assert.equal(
-      await renderCompiledAsync(compile("{{> greeting}}"), { name: "Eve" }, { greeting: loadGreeting }),
+      await renderCompiledAsync(compile("{{> greeting}}"), { name: "Carol" }, async (name) => name === "greeting" ? greeting : null),
+      "Hi, Carol!"
+    );
+  });
+
+  it("lazily loads an async partial via loader function", async () => {
+    let loadCount = 0;
+    assert.equal(
+      await renderCompiledAsync(
+        compile("{{> greeting}}"),
+        { name: "Eve" },
+        async (_name) => { loadCount++; return compile("Hello, {{name}}!"); }
+      ),
       "Hello, Eve!"
     );
     assert.equal(loadCount, 1);
@@ -405,45 +632,47 @@ describe("renderCompiledAsync", () => {
 
   it("loads each async partial only once across re-render iterations", async () => {
     let loadCount = 0;
-    // view function forces two render iterations
-    const name = async () => "Frank";
-    const loadGreeting = async () => { loadCount++; return compile("Hi, {{name}}!"); };
+    const name = async () => "Frank"; // async value forces an extra render iteration
     assert.equal(
-      await renderCompiledAsync(compile("{{> greeting}}"), { name }, { greeting: loadGreeting }),
+      await renderCompiledAsync(
+        compile("{{> greeting}}"),
+        { name },
+        async (_name) => { loadCount++; return compile("Hi, {{name}}!"); }
+      ),
       "Hi, Frank!"
     );
     assert.equal(loadCount, 1);
   });
 
-  it("renders multiple async partials", async () => {
-    const header = async () => compile("[{{title}}]");
-    const footer = async () => compile("({{year}})");
+  it("renders multiple partials via loader function", async () => {
+    const templates: Record<string, string> = {
+      header: "[{{title}}]",
+      footer: "({{year}})",
+    };
     assert.equal(
       await renderCompiledAsync(
         compile("{{> header}} {{> footer}}"),
         { title: "Home", year: 2026 },
-        { header, footer }
+        async (name) => name in templates ? compile(templates[name]) : null
       ),
       "[Home] (2026)"
     );
   });
 
-  it("propagates rejection from a partial loader", async () => {
-    const boom = async () => { throw new Error("partial load failed"); };
+  it("propagates rejection from a loader function", async () => {
     await assert.rejects(
-      renderCompiledAsync(compile("{{> bad}}"), {}, { bad: boom }),
+      renderCompiledAsync(compile("{{> bad}}"), {}, async (_name) => { throw new Error("partial load failed"); }),
       /partial load failed/
     );
   });
 
-  it("does not leave unhandled rejections when a partial loader fails", async () => {
+  it("does not leave unhandled rejections when a loader function fails", async () => {
     let unhandled: Error | undefined;
     const handler = (reason: Error) => { unhandled = reason; };
     process.once("unhandledRejection", handler);
     try {
-      const boom = async () => { throw new Error("should not be unhandled partial"); };
       await assert.rejects(
-        renderCompiledAsync(compile("{{> bad}}"), {}, { bad: boom }),
+        renderCompiledAsync(compile("{{> bad}}"), {}, async (_name) => { throw new Error("should not be unhandled partial"); }),
         /should not be unhandled partial/
       );
       await new Promise(resolve => setImmediate(resolve));
@@ -515,18 +744,16 @@ describe("renderAsync", () => {
     );
   });
 
-  it("accepts async function partials (loaded on demand)", async () => {
-    const loadGreeting = async () => "Hello, {{name}}!";
+  it("accepts a loader function for string partials", async () => {
     assert.equal(
-      await renderAsync("{{> greeting}}", { name: "Grace" }, { greeting: loadGreeting }),
+      await renderAsync("{{> greeting}}", { name: "Grace" }, async (_name) => "Hello, {{name}}!"),
       "Hello, Grace!"
     );
   });
 
-  it("propagates rejection from an async function partial", async () => {
-    const boom = async () => { throw new Error("async partial failure"); };
+  it("propagates rejection from a loader function", async () => {
     await assert.rejects(
-      renderAsync("{{> bad}}", {}, { bad: boom }),
+      renderAsync("{{> bad}}", {}, async (_name) => { throw new Error("async partial failure"); }),
       /async partial failure/
     );
   });
@@ -556,6 +783,163 @@ describe("renderAsync", () => {
       }),
       "Alice"
     );
+  });
+});
+
+// Spec: standalone tags (section, inverted, comment, set-delimiter) that occupy
+// an entire line (optionally preceded by whitespace) must have that whole line
+// removed — including the leading whitespace and the trailing newline.
+// Variable tags are NEVER standalone and must not consume surrounding whitespace.
+// Sources: mustache/spec sections.yml, comments.yml, partials.yml — "Whitespace Sensitivity"
+describe("standalone tags", () => {
+  // --- Sections ---
+
+  it("section: does not alter surrounding whitespace when inline", () => {
+    // Non-standalone: tag shares the line with other content
+    assert.equal(render(" | {{#boolean}}\t|\t{{/boolean}} | \n", { boolean: true }), " | \t|\t | \n");
+  });
+
+  it("section: does not alter internal whitespace", () => {
+    assert.equal(
+      render(" | {{#boolean}} {{! Important Whitespace }}\n {{/boolean}} | \n", { boolean: true }),
+      " |  \n  | \n"
+    );
+  });
+
+  it("section: standalone opening and closing tags are removed from output", () => {
+    assert.equal(
+      render("| This Is\n{{#boolean}}\n|\n{{/boolean}}\n| A Line", { boolean: true }),
+      "| This Is\n|\n| A Line"
+    );
+  });
+
+  it("section: indented standalone tags are removed from output", () => {
+    assert.equal(
+      render("| This Is\n  {{#boolean}}\n|\n  {{/boolean}}\n| A Line", { boolean: true }),
+      "| This Is\n|\n| A Line"
+    );
+  });
+
+  it("section: standalone tag without a preceding line is removed", () => {
+    // Tag is at the very start of the template — no newline before it
+    assert.equal(render("  {{#boolean}}\n#{{/boolean}}\n/", { boolean: true }), "#\n/");
+  });
+
+  it("section: standalone tag without a trailing newline is removed", () => {
+    // Tag is at the very end of the template — no newline after it
+    assert.equal(render("#{{#boolean}}\n/\n  {{/boolean}}", { boolean: true }), "#\n/\n");
+  });
+
+  it("section: \\r\\n is treated as a single newline for standalone detection", () => {
+    assert.equal(render("|\r\n{{#boolean}}\r\n{{/boolean}}\r\n|", { boolean: true }), "|\r\n|");
+  });
+
+  // --- Inverted sections ---
+
+  it("inverted section: standalone tags are removed from output", () => {
+    assert.equal(
+      render("| This Is\n{{^boolean}}\n|\n{{/boolean}}\n| A Line", { boolean: false }),
+      "| This Is\n|\n| A Line"
+    );
+  });
+
+  it("inverted section: indented standalone tags are removed from output", () => {
+    assert.equal(
+      render("| This Is\n  {{^boolean}}\n|\n  {{/boolean}}\n| A Line", { boolean: false }),
+      "| This Is\n|\n| A Line"
+    );
+  });
+
+  it("inverted section: standalone tag without a preceding line is removed", () => {
+    assert.equal(render("  {{^boolean}}\n#{{/boolean}}\n/", { boolean: false }), "#\n/");
+  });
+
+  it("inverted section: standalone tag without a trailing newline is removed", () => {
+    assert.equal(render("#{{^boolean}}\n/\n  {{/boolean}}", { boolean: false }), "#\n/\n");
+  });
+
+  it("inverted section: \\r\\n is treated as a single newline for standalone detection", () => {
+    assert.equal(render("|\r\n{{^boolean}}\r\n{{/boolean}}\r\n|", { boolean: false }), "|\r\n|");
+  });
+
+  // --- Comments ---
+
+  it("comment: standalone comment line is removed from output", () => {
+    assert.equal(render("Begin.\n{{! Comment Block! }}\nEnd.", {}), "Begin.\nEnd.");
+  });
+
+  it("comment: indented standalone comment line is removed from output", () => {
+    assert.equal(render("Begin.\n  {{! Indented Comment Block! }}\nEnd.", {}), "Begin.\nEnd.");
+  });
+
+  it("comment: inline comment does not strip surrounding whitespace", () => {
+    // The tag shares the line with '12' — NOT standalone
+    assert.equal(render("  12 {{! 34 }}\n", {}), "  12 \n");
+  });
+
+  it("comment: standalone comment without a preceding line is removed", () => {
+    assert.equal(render("  {{! I'm Still Standalone }}\n!", {}), "!");
+  });
+
+  it("comment: standalone comment without a trailing newline is removed", () => {
+    assert.equal(render("!\n  {{! I'm Still Standalone }}", {}), "!\n");
+  });
+
+  it("comment: \\r\\n is treated as a single newline for standalone detection", () => {
+    assert.equal(render("|\r\n{{! Standalone Comment }}\r\n|", {}), "|\r\n|");
+  });
+
+  it("comment: multiline standalone comment is removed", () => {
+    assert.equal(
+      render("Begin.\n{{!\n  Something's going on here...\n}}\nEnd.", {}),
+      "Begin.\nEnd."
+    );
+  });
+
+  // --- Set delimiters ---
+
+  it("set delimiter: standalone set-delimiter line is removed from output", () => {
+    assert.equal(render("Begin.\n{{=| |=}}\nEnd.", {}), "Begin.\nEnd.");
+  });
+
+  it("set delimiter: indented standalone set-delimiter line is removed from output", () => {
+    assert.equal(render("Begin.\n  {{=| |=}}\nEnd.", {}), "Begin.\nEnd.");
+  });
+
+  it("set delimiter: \\r\\n is treated as a single newline for standalone detection", () => {
+    assert.equal(render("|\r\n{{=| |=}}\r\n|", {}), "|\r\n|");
+  });
+
+  // --- Variables are NEVER standalone ---
+
+  it("variable: does not consume surrounding whitespace or newline", () => {
+    assert.equal(render("  {{name}}\n", { name: "Alice" }), "  Alice\n");
+  });
+
+  it("variable: missing variable does not consume its line", () => {
+    assert.equal(render("  {{missing}}\n", {}), "  \n");
+  });
+
+  // --- Partials ---
+
+  it("partial: standalone partial line is removed (tag line consumed, partial content kept)", () => {
+    const content = compile("hello");
+    assert.equal(render("before\n{{> content}}\nafter", {}, { content }), "before\nhelloafter");
+  });
+
+  it("partial: indented standalone partial prepending indentation to each line of partial is not supported", () => {
+    const partial = compile("line1\nline2");
+    assert.equal(render("  {{> partial}}\n", {}, { partial }), "line1\nline2");
+  });
+
+  it("partial: non-standalone partial does not strip surrounding whitespace", () => {
+    const partial = compile("X");
+    assert.equal(render("| {{> partial}} |", {}, { partial }), "| X |");
+  });
+
+  it("partial: \\r\\n is treated as a single newline for standalone detection", () => {
+    const partial = compile(">");
+    assert.equal(render("|\r\n{{>partial}}\r\n|", {}, { partial }), "|\r\n>|");
   });
 });
 

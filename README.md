@@ -16,8 +16,13 @@ functions** for high-throughput rendering.
   function; subsequent renders are pure function calls with no parsing overhead
 - **Full Mustache syntax** — variables, sections, inverted sections, comments,
   partials, dynamic partials, and set-delimiter tags
+- **Standalone tag whitespace stripping** — section, comment, partial,
+  set-delimiter, and inheritance tags on their own line consume that whole line
+  (leading whitespace + trailing newline), per spec
 - **Template inheritance** — `{{< parent}}` / `{{$ block}}` for layout
   composition (extends the base Mustache spec)
+- **Permissive tag whitespace** — spaces are allowed before and after any tag
+  sigil: `{{ # name }}`, `{{> partial }}`, `{{ = [ ] = }}`, etc.
 - **Async rendering** — `renderAsync` / `renderCompiledAsync` resolve async
   and Promise-returning view values automatically, with lazy async partial
   loading
@@ -115,6 +120,76 @@ const page = compile(`
 renderCompiled(page, { name: "Alice" }, { layout });
 ```
 
+#### What is allowed inside a parent body (`{{< parent}} … {{/parent}}`)
+
+The spec says everything except block overrides should be silently ignored
+inside a parent. This implementation is deliberately stricter on errors but
+also more useful:
+
+| Content | Behaviour |
+|---------|-----------|
+| Plain text | Silently ignored |
+| Comments `{{! … }}` | Silently ignored |
+| Block overrides `{{$ block }} … {{/block}}` | Processed normally — overrides the named block in the parent template |
+| Set-delimiter tags `{{= … =}}` | **Processed** — delimiter change takes effect for the rest of the parent body, allowing different delimiters for different block overrides |
+| Sections `{{#}}` / `{{^}}` | **Compile-time error** — hiding structural tags would conceal bugs |
+| Variables `{{name}}` / `{{{name}}}` / `{{& name}}` | **Compile-time error** |
+| Partials `{{> …}}` / `{{> *…}}` | **Compile-time error** |
+| Nested parents `{{< …}}` | **Compile-time error** |
+
+Example — changing delimiters mid-parent to override two blocks with
+different delimiter styles:
+
+```ts
+const parent = compile("{{$a}}A{{/a}} {{$b}}B{{/b}}");
+const child  = compile("{{< parent}}{{=[ ]=}}[$a]X[/a][={{ }}=]{{$b}}Y{{/b}}{{/parent}}");
+renderCompiled(child, {}, { parent }); // "X Y"
+```
+
+### Standalone tags
+
+Tags that appear alone on a line (with only optional leading whitespace) are
+treated as **standalone**: the entire line, including the leading whitespace
+and the trailing newline (`\n` or `\r\n`), is removed from the output. This
+applies to section, inverted-section, comment, set-delimiter, partial, block,
+and parent tags. Variable tags are never standalone.
+
+```
+Template:
+  | before
+  {{#show}}
+  | inside
+  {{/show}}
+  | after
+
+Output (show = true):
+  | before
+  | inside
+  | after
+```
+
+> **Note:** The spec also requires standalone partial tags to prepend their
+> leading whitespace as indentation to every line of the included partial.
+> This implementation does **not** support partial indentation — the partial
+> content is inserted as-is.
+
+### Whitespace inside tags
+
+Spaces are permitted before and after any tag sigil, and around any tag name.
+All three positions are equivalent:
+
+```
+{{ name }}        — spaces around name
+{{# section }}    — space after sigil
+{{ # section }}   — space before and after sigil
+{{> * dynamic }}  — spaces around * in dynamic partial
+{{ = [ ] = }}     — spaces around = in set-delimiter
+```
+
+This applies uniformly to all tag types: variables, sections, inverted
+sections, comments, partials, dynamic partials, blocks, parents, and
+set-delimiter tags.
+
 ### Unescaped output
 
 Use triple mustaches `{{{…}}}` or `{{& …}}` to skip HTML escaping:
@@ -146,7 +221,7 @@ const html = await renderAsync(
 );
 ```
 
-Async partials (loaded on demand):
+Async partials (loaded on demand via a loader function):
 
 ```ts
 import { renderAsync } from "abdk-mustache-js";
@@ -154,12 +229,18 @@ import { renderAsync } from "abdk-mustache-js";
 const html = await renderAsync(
   "{{> header}}{{body}}",
   { body: "Content" },
-  {
-    // string partial — compiled eagerly
-    header: "<h1>ABDK</h1>",
-    // async partial — compiled lazily, result cached for subsequent iterations
-    nav: async () => fetchNavTemplate(),
-  }
+  // loader function — called once per partial name, result cached
+  async (name) => fetchTemplate(name)
+);
+```
+
+Or pass a plain object of pre-compiled string partials:
+
+```ts
+const html = await renderAsync(
+  "{{> header}}{{body}}",
+  { body: "Content" },
+  { header: "<h1>ABDK</h1>" }
 );
 ```
 
@@ -181,7 +262,7 @@ Renders a pre-compiled template synchronously.
 |-----------|------|---------|
 | `template` | `CompiledTemplate` | — |
 | `view` | `any` | — |
-| `partials` | `{ [name: string]: CompiledTemplate }` | `{}` |
+| `partials` | `{ [name: string]: CompiledTemplate }` \| `(name: string) => CompiledTemplate \| null` | `{}` |
 | `escape` | `(s: string) => string` | built-in HTML escape |
 
 ### `render(template, view, partials?, escape?): string`
@@ -193,32 +274,33 @@ first use per `render` call).
 |-----------|------|---------|
 | `template` | `string` | — |
 | `view` | `any` | — |
-| `partials` | `{ [name: string]: string }` | `{}` |
+| `partials` | `{ [name: string]: string }` \| `(name: string) => string \| null` | `{}` |
 | `escape` | `(s: string) => string` | built-in HTML escape |
 
 ### `renderCompiledAsync(template, view, partials?, escape?): Promise<string>`
 
 Renders a pre-compiled template; asynchronous view property functions are
-resolved automatically (re-rendering until all promises settle). Partial
-loaders are called at most once per `renderCompiledAsync` call.
+resolved automatically (re-rendering until all promises settle). When a loader
+function is supplied, it is called at most once per partial name per
+`renderCompiledAsync` call.
 
 | Parameter | Type | Default |
-|-----------|------|---------|
+|-----------|------|---------||
 | `template` | `CompiledTemplate` | — |
 | `view` | `any` | — |
-| `partials` | `{ [name: string]: () => Promise<CompiledTemplate> }` | `{}` |
+| `partials` | `{ [name: string]: CompiledTemplate }` \| `(name: string) => Promise<CompiledTemplate \| null>` | `{}` |
 | `escape` | `(s: string) => string` | built-in HTML escape |
 
 ### `renderAsync(template, view, partials?, escape?): Promise<string>`
 
 Convenience wrapper around `renderCompiledAsync` that accepts a template
-string and string / async-function partials.
+string and string partials or an async loader function.
 
 | Parameter | Type | Default |
-|-----------|------|---------|
+|-----------|------|---------||
 | `template` | `string` | — |
 | `view` | `any` | — |
-| `partials` | `{ [name: string]: string \| (() => Promise<string>) }` | `{}` |
+| `partials` | `{ [name: string]: string }` \| `(name: string) => Promise<string \| null>` | `{}` |
 | `escape` | `(s: string) => string` | built-in HTML escape |
 
 ### `CompiledTemplate` (type)
@@ -226,7 +308,8 @@ string and string / async-function partials.
 ```ts
 type CompiledTemplate = (
   view: any[],
-  partials: { [name: string]: CompiledTemplate },
+  partials: { [name: string]: CompiledTemplate }
+    | ((name: string) => CompiledTemplate | null),
   blocks: { [name: string]: () => string },
   escape: (string: string) => string
 ) => string;
@@ -247,9 +330,10 @@ type CompiledTemplate = (
 | Dynamic partials `{{> *name}}` | ✓ |
 | Set delimiters `{{= <% %> =}}` | ✓ |
 | Template inheritance `{{< parent}}` / `{{$ block}}` | ✓ (extension) |
+| Standalone tag whitespace stripping | ✓ |
+| Whitespace before/after any tag sigil | ✓ (extension) |
 | Lambda sections (raw text + render callback) | ✗ (optional spec feature) |
-| Standalone tag whitespace stripping | ✗ |
-| Partial indentation | ✗ |
+| Partial indentation (standalone partial prepends indent) | ✗ (intentionally omitted) |
 
 ---
 
