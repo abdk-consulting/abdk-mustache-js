@@ -14,7 +14,8 @@ function escapeRegExp(string: string): string {
   return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
 }
 
-function compileTagRegExp(leftDelimiter: string, rightDelimiter: string): RegExp {
+function compileTagRegExp(leftDelimiter: string, rightDelimiter: string)
+  : RegExp {
   let regExp = "";
   regExp += escapeRegExp(leftDelimiter);
   regExp += "\\s*";
@@ -92,94 +93,101 @@ export function compile(template: string): CompiledTemplate {
     const match = tagRegExp.exec(template);
     if (!match) break;
     const groups = match.groups;
-    let left = match.index;
-    let right = tagRegExp.lastIndex;
-    let isStandalone = false;
-    if (!groups?.uvarb && !groups?.uvara && !groups?.var) {
-      isStandalone = true;
+    const advance = (left: number, right: number) => {
+      if (!inParent && left > index)
+        code += `r+=${quoteString(template.slice(index, left))};`;
+      index = right;
+    }
+    const inline = () => {
+      advance(match.index, tagRegExp.lastIndex);
+    }
+    const checkStandalone = () => {
+      let left = match.index;
       while (left > 0) {
         const ch = template[left - 1];
-        if (ch.match(/\S/)) {
-          isStandalone = false;
-          break;
-        } else if (ch.match(/[\n\r]/)) break;
-        else left--;
+        if (ch.match(/\S/)) return null;
+        else if (ch.match(/[\n\r]/)) break;
+        left--;
       }
-      if (isStandalone) {
-        while (right < template.length) {
-          const ch = template[right];
-          if (ch.match(/\S/)) {
-            isStandalone = false;
-            break;
-          } else if (ch.match(/[\n\r]/)) {
-            right++;
-            if (right < template.length
-              && template[right].match(/[\n\r]/)
-              && template[right] !== ch) right++;
-            break;
-          } else right++;
-        }
+      let right = tagRegExp.lastIndex;
+      let length = template.length;
+      while (right < length) {
+        const ch = template[right];
+        if (ch.match(/\S/)) return null;
+        else if (ch.match(/[\n\r]/)) break;
+        right++;
       }
-      if (!isStandalone) {
-        left = match.index;
-        right = tagRegExp.lastIndex;
+      const m = template.substring(right).match(/^(\n\r|\r\n|\n|\r)/);
+      let next = right + (m?.[1]?.length ?? 0);
+      return { left, right, next };
+    };
+    const standalone = () => {
+      const bounds = checkStandalone();
+      if (bounds !== null) advance(bounds.left, bounds.next);
+      else inline();
+    }
+    const indent = () => {
+      const bounds = checkStandalone();
+      if (bounds !== null) {
+        advance(bounds.left, bounds.right);
+        return template.substring(bounds.left, match.index);
+      } else {
+        inline();
+        return null;
       }
     }
-    if (!inParent && match.index > index)
-      code += `r+=${quoteString(template.slice(index, left))};`;
-    index = right;
     if (groups?.ld && groups?.rd) { // Set delimiters
+      standalone();
       tagRegExp = compileTagRegExp(groups.ld, groups.rd);
     } else if (groups?.sec) { // Section
+      standalone();
       if (inParent) throw new Error("Sections cannot be nested inside parents");
       resolve(groups.sec);
       code += `x=a(x);`;
       code += `for(const i of x){v.unshift(i);`;
       stack.push([groups.sec, () => code += `v.shift();}`]);
     } else if (groups?.isec) { // Inverted section
+      standalone();
       if (inParent) throw new Error("Sections cannot be nested inside parents");
       resolve(groups.isec);
       code += `if(!a(x).length){`;
       stack.push([groups.isec, () => code += `}`]);
     } else if (groups?.esec) { // End section
+      standalone();
       const [startTag, endCode] = stack.pop()
         || throwError(Error("Unmatched end tag: " + groups.esec));
       if (startTag !== groups.esec)
         throw new Error(`Unmatched end tag: ${startTag} -> ${groups.esec}`);
       endCode();
     } else if (groups?.uvarb) { // Unescaped variable with {{{}}}
+      inline();
       if (inParent)
         throw new Error("Variables cannot be nested inside parents");
       resolve(groups.uvarb);
       code += `r+=s(x);`;
     } else if (groups?.uvara) { // Unescaped variable with {{& }}
+      inline();
       if (inParent)
         throw new Error("Variables cannot be nested inside parents");
       resolve(groups.uvara);
       code += `r+=s(x);`;
     } else if (groups?.dpt) { // Dynamic partial
-      if (inParent)
-        throw new Error("Partials cannot be nested inside parents");
+      const indentation = indent();
+      if (inParent) throw new Error("Partials cannot be nested inside parents");
       resolve(groups.dpt);
       code += `x=P(x);`;
-      if (isStandalone) {
-        if (left < match.index) {
-          const indentation = template.slice(left, match.index);
-          code += `r+=(x?x(v,p,{},e):"").replace(/^/gm,${quoteString(indentation)});`;
-        } else code += `r+=x?x(v,p,{},e):"";`;
-        while (template[index - 1].match(/[\n\r]/)) index--;
+      if (indentation) {
+        code += `r+=(x?x(v,p,{},e):"").replace(/^/gm,${quoteString(indentation)});`;
       } else code += `r+=x?x(v,p,{},e):"";`;
     } else if (groups?.pt) { // Partial
+      const indentation = indent();
       if (inParent) throw new Error("Partials cannot be nested inside parents");
       code += `x=P(${quoteString(groups.pt)});`;
-      if (isStandalone) {
-        if (left < match.index) {
-          const indentation = template.slice(left, match.index);
-          code += `r+=(x?x(v,p,{},e):"").replace(/^/gm,${quoteString(indentation)});`;
-        } else code += `r+=x?x(v,p,{},e):"";`;
-        while (template[index - 1].match(/[\n\r]/)) index--;
+      if (indentation) {
+        code += `r+=(x?x(v,p,{},e):"").replace(/^/gm,${quoteString(indentation)});`;
       } else code += `r+=x?x(v,p,{},e):"";`;
     } else if (groups?.bl) { // Block
+      standalone();
       if (inParent) {
         if (isIdentifier(groups.bl))
           code += `${groups.bl}`;
@@ -198,12 +206,14 @@ export function compile(template: string): CompiledTemplate {
         stack.push([groups.bl, () => code += `}`]);
       }
     } else if (groups?.dpn) { // Dynamic Parent
+      standalone();
       if (inParent) throw new Error("Parents cannot be nested inside parents");
       resolve(groups.dpn);
       code += `x=P(x);`;
       code += `if(x)r+=x(v,p,{`;
       stack.push([groups.dpn, () => code += `},e);`]);
     } else if (groups?.pn) { // Parent
+      standalone();
       if (inParent) throw new Error("Parents cannot be nested inside parents");
       code += `x=P(${quoteString(groups.pn)});`;
       code += `if(x)r+=x(v,p,{`;
@@ -213,12 +223,13 @@ export function compile(template: string): CompiledTemplate {
         inParent = false;
       }]);
     } else if (groups?.var) { // Variable
+      inline();
       if (inParent)
         throw new Error("Variables cannot be nested inside parents");
       resolve(groups.var);
       code += `r+=S(x);`;
-    } else {
-      // Comment, do nothing
+    } else { // Comment
+      standalone();
     }
   }
   if (stack.length > 0) {
