@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.7] — 2026-04-11
+
+### Changed
+
+- **Partial indentation — cleaner implementation, no synthesised newlines** —
+  the indentation helper function has been replaced with
+  `String.replace(/^/gm, indentation)` applied directly to the partial's
+  rendered output.  The standalone tag line's own trailing newline is now taken
+  from the template itself (by rewinding the template index) rather than being
+  appended by the indentation logic.  Behavioural consequences:
+  - A partial whose content has **no trailing newline** now ends with the
+    template's `\n` (previously no trailing newline was added).
+  - A **missing or empty partial** used in an indented standalone position now
+    produces an indented empty line (`"  \n"`) instead of an empty string.
+  - Fixed a subtle bug where the old split/join approach was prepending the
+    indentation to the first character of the template content that followed
+    the partial tag.
+
+---
+
+## [1.0.6] — 2026-04-11
+
+### Changed
+
+- **Partial indentation — trailing-newline behaviour** — the indentation
+  function now appends `\n` to *every* indented segment (including the empty
+  segment produced by a trailing newline in the partial), matching the rule
+  "every line of the partial's output is indented".  As a consequence, a
+  partial whose content ends with a newline will produce an indented empty line
+  (`"  \n"`) at the end of its output.  Previously the segments were joined
+  with `\n` (no final newline), so a trailing newline in the partial did not
+  produce a trailing newline in the rendered output.
+
+---
+
 ## [1.0.5] — 2026-04-11
 
 ### Added
@@ -108,6 +143,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero runtime dependencies
 - TypeScript declarations included
 
+[1.0.7]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.7
+[1.0.6]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.6
 [1.0.5]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.5
 [1.0.4]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.4
 [1.0.2]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.2

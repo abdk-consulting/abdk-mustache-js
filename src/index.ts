@@ -51,7 +51,6 @@ export function compile(template: string): CompiledTemplate {
   code += `const S=(x)=>x==null?"":e(x);`;
   code += `const o=(n)=>v.find(x=>x!=null&&typeof x==="object"&&n in x);`;
   code += `const P=(n)=>typeof p==="function"?p(n):p[n];`
-  code += `const I=(i,p)=>p.split(/\\r\\n|\\n\\r|\\n|\\r/).map(l=>i+l).join("\\n");`
   code += `let x;`;
   code += `let r="";`;
 
@@ -68,8 +67,9 @@ export function compile(template: string): CompiledTemplate {
     if (!tagMatch) throw new Error(`Invalid tag: ${tag}`);
     let left = match.index;
     let right = tagRegExp.lastIndex;
+    let isStandalone = false;
     if (!tagMatch[6] && !tagMatch[7] && !tagMatch[13]) { // Standalone tags
-      let isStandalone = true;
+      isStandalone = true;
       while (left > 0) {
         const ch = template[left - 1];
         if (ch.match(/\S/)) {
@@ -135,16 +135,22 @@ export function compile(template: string): CompiledTemplate {
         throw new Error("Partials cannot be nested inside parents");
       resolve(tagMatch[8]);
       code += `x=P(x);`;
-      if (left < match.index) {
-        const indentation = template.slice(left, match.index);
-        code += `r+=x?I(${quoteString(indentation)},x(v,p,{},e)):"";`;
+      if (isStandalone) {
+        if (left < match.index) {
+          const indentation = template.slice(left, match.index);
+          code += `r+=(x?x(v,p,{},e):"").replace(/^/gm,${quoteString(indentation)});`;
+        } else code += `r+=x?x(v,p,{},e):"";`;
+        while (template[index - 1].match(/[\n\r]/)) index--;
       } else code += `r+=x?x(v,p,{},e):"";`;
     } else if (tagMatch[9]) { // Partial
       if (inParent) throw new Error("Partials cannot be nested inside parents");
       code += `x=P(${quoteString(tagMatch[9])});`;
-      if (left < match.index) {
-        const indentation = template.slice(left, match.index);
-        code += `r+=x?I(${quoteString(indentation)},x(v,p,{},e)):"";`;
+      if (isStandalone) {
+        if (left < match.index) {
+          const indentation = template.slice(left, match.index);
+          code += `r+=(x?x(v,p,{},e):"").replace(/^/gm,${quoteString(indentation)});`;
+        } else code += `r+=x?x(v,p,{},e):"";`;
+        while (template[index - 1].match(/[\n\r]/)) index--;
       } else code += `r+=x?x(v,p,{},e):"";`;
     } else if (tagMatch[10]) { // Block
       if (inParent) {

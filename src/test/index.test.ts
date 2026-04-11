@@ -162,7 +162,7 @@ describe("compile", () => {
         const greet = compile("Hello!");
         assert.equal(
           render("  {{> greet}}\n", {}, { greet }),
-          "  Hello!"
+          "  Hello!\n"
         );
       });
 
@@ -170,7 +170,7 @@ describe("compile", () => {
         const partial = compile("line1\nline2\n");
         assert.equal(
           render("  {{> partial}}\n", {}, { partial }),
-          "  line1\n  line2\n  "
+          "  line1\n  line2\n  \n"
         );
       });
 
@@ -178,7 +178,7 @@ describe("compile", () => {
         const greet = compile("Hello!\n");
         assert.equal(
           render("before\n  {{> greet}}\nafter", {}, { greet }),
-          "before\n  Hello!\n  after"
+          "before\n  Hello!\n  \nafter"
         );
       });
 
@@ -186,7 +186,7 @@ describe("compile", () => {
         const partial = compile("A\nB\n");
         assert.equal(
           render("\t{{> partial}}\n", {}, { partial }),
-          "\tA\n\tB\n\t"
+          "\tA\n\tB\n\t\n"
         );
       });
 
@@ -199,14 +199,14 @@ describe("compile", () => {
       });
 
       it("renders empty string for a missing indented standalone partial", () => {
-        assert.equal(render("  {{> missing}}\n", {}), "");
+        assert.equal(render("  {{> missing}}\n", {}), "  \n");
       });
 
       it("indents a partial that has no trailing newline", () => {
         const partial = compile("foo\nbar");
         assert.equal(
           render("  {{> partial}}\n", {}, { partial }),
-          "  foo\n  bar"
+          "  foo\n  bar\n"
         );
       });
 
@@ -214,7 +214,7 @@ describe("compile", () => {
         const tmpl = compile("Hello!\n");
         assert.equal(
           render("  {{> *name}}\n", { name: "tmpl" }, { tmpl }),
-          "  Hello!\n  "
+          "  Hello!\n  \n"
         );
       });
 
@@ -222,15 +222,15 @@ describe("compile", () => {
         const partial = compile("line1\nline2\n");
         assert.equal(
           render("  {{> *name}}\n", { name: "partial" }, { partial }),
-          "  line1\n  line2\n  "
+          "  line1\n  line2\n  \n"
         );
       });
 
-      it("does not add indentation when partial tag has no leading whitespace", () => {
+      it("zero indentation for standalone partial", () => {
         const partial = compile("A\nB\n");
         assert.equal(
           render("{{> partial}}\n", {}, { partial }),
-          "A\nB\n"
+          "A\nB\n\n"
         );
       });
 
@@ -238,7 +238,7 @@ describe("compile", () => {
         const p = compile("x\n");
         assert.equal(
           render("  {{> p}}\n    {{> p}}\n", {}, { p }),
-          "  x\n      x\n    "
+          "  x\n  \n    x\n    \n"
         );
       });
     });
@@ -1010,12 +1010,12 @@ describe("standalone tags", () => {
 
   it("partial: standalone partial line is removed (tag line consumed, partial content kept)", () => {
     const content = compile("hello");
-    assert.equal(render("before\n{{> content}}\nafter", {}, { content }), "before\nhelloafter");
+    assert.equal(render("before\n{{> content}}\nafter", {}, { content }), "before\nhello\nafter");
   });
 
   it("partial: indented standalone partial prepends indentation to each line of partial", () => {
     const partial = compile("line1\nline2");
-    assert.equal(render("  {{> partial}}\n", {}, { partial }), "  line1\n  line2");
+    assert.equal(render("  {{> partial}}\n", {}, { partial }), "  line1\n  line2\n");
   });
 
   it("partial: non-standalone partial does not strip surrounding whitespace", () => {
@@ -1025,7 +1025,7 @@ describe("standalone tags", () => {
 
   it("partial: \\r\\n is treated as a single newline for standalone detection", () => {
     const partial = compile(">");
-    assert.equal(render("|\r\n{{>partial}}\r\n|", {}, { partial }), "|\r\n>|");
+    assert.equal(render("|\r\n{{>partial}}\r\n|", {}, { partial }), "|\r\n>\r\n|");
   });
 });
 

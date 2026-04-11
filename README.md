@@ -169,8 +169,10 @@ Output (show = true):
 ```
 
 When a standalone partial tag has leading whitespace, that whitespace is
-prepended to **every line** of the included partial's output, per the Mustache
-spec:
+prepended to **every line** of the included partial's output using
+`String.replace(/^/gm, indentation)`.  The standalone tag line's own trailing
+newline is then taken from the **template itself** — no newline characters are
+introduced that were not already present in the template or the partial.
 
 ```
 Template:
@@ -178,9 +180,7 @@ Template:
   {{> item}}
   | after
 
-Partial ("item"):
-line1
-line2
+Partial ("item"):  "line1\nline2"
 
 Output:
   | before
@@ -189,9 +189,21 @@ Output:
   | after
 ```
 
-A partial that ends without a trailing newline has its last fragment indented
-but no newline is added. Non-standalone (inline) partials — where the tag
-shares a line with other content — are inserted as-is with no indentation.
+Because `/^/gm` matches the position after every embedded newline (including
+the one that terminates a **trailing newline** in the partial), a partial whose
+content ends with `\n` produces an **indented empty line** before the
+template's own newline:
+
+| Partial content | Output of `"  {{> p}}\n"` |
+|---|---|
+| `"foo"` (no trailing `\n`) | `"  foo\n"` |
+| `"foo\n"` (trailing `\n`) | `"  foo\n  \n"` |
+| `"foo\nbar"` | `"  foo\n  bar\n"` |
+| `"foo\nbar\n"` | `"  foo\n  bar\n  \n"` |
+| `""` (empty / missing) | `"  \n"` |
+
+Non-standalone (inline) partials — where the tag shares a line with other
+content — are inserted as-is with no indentation.
 
 ### Whitespace inside tags
 
