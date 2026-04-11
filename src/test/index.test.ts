@@ -156,6 +156,92 @@ describe("compile", () => {
         "Hello, Carol!"
       );
     });
+
+    describe("indentation", () => {
+      it("indents a single-line standalone partial", () => {
+        const greet = compile("Hello!");
+        assert.equal(
+          render("  {{> greet}}\n", {}, { greet }),
+          "  Hello!"
+        );
+      });
+
+      it("indents each line of a multi-line standalone partial", () => {
+        const partial = compile("line1\nline2\n");
+        assert.equal(
+          render("  {{> partial}}\n", {}, { partial }),
+          "  line1\n  line2\n  "
+        );
+      });
+
+      it("indents a standalone partial preceded by a content line", () => {
+        const greet = compile("Hello!\n");
+        assert.equal(
+          render("before\n  {{> greet}}\nafter", {}, { greet }),
+          "before\n  Hello!\n  after"
+        );
+      });
+
+      it("uses tab as indentation", () => {
+        const partial = compile("A\nB\n");
+        assert.equal(
+          render("\t{{> partial}}\n", {}, { partial }),
+          "\tA\n\tB\n\t"
+        );
+      });
+
+      it("does not indent an inline (non-standalone) partial", () => {
+        const greet = compile("Hi!");
+        assert.equal(
+          render("Say: {{> greet}} there", {}, { greet }),
+          "Say: Hi! there"
+        );
+      });
+
+      it("renders empty string for a missing indented standalone partial", () => {
+        assert.equal(render("  {{> missing}}\n", {}), "");
+      });
+
+      it("indents a partial that has no trailing newline", () => {
+        const partial = compile("foo\nbar");
+        assert.equal(
+          render("  {{> partial}}\n", {}, { partial }),
+          "  foo\n  bar"
+        );
+      });
+
+      it("indents a standalone dynamic partial", () => {
+        const tmpl = compile("Hello!\n");
+        assert.equal(
+          render("  {{> *name}}\n", { name: "tmpl" }, { tmpl }),
+          "  Hello!\n  "
+        );
+      });
+
+      it("indents each line of a multi-line standalone dynamic partial", () => {
+        const partial = compile("line1\nline2\n");
+        assert.equal(
+          render("  {{> *name}}\n", { name: "partial" }, { partial }),
+          "  line1\n  line2\n  "
+        );
+      });
+
+      it("does not add indentation when partial tag has no leading whitespace", () => {
+        const partial = compile("A\nB\n");
+        assert.equal(
+          render("{{> partial}}\n", {}, { partial }),
+          "A\nB\n"
+        );
+      });
+
+      it("applies distinct indentation for each standalone partial in the template", () => {
+        const p = compile("x\n");
+        assert.equal(
+          render("  {{> p}}\n    {{> p}}\n", {}, { p }),
+          "  x\n      x\n    "
+        );
+      });
+    });
   });
 
   describe("blocks and parents", () => {
@@ -927,9 +1013,9 @@ describe("standalone tags", () => {
     assert.equal(render("before\n{{> content}}\nafter", {}, { content }), "before\nhelloafter");
   });
 
-  it("partial: indented standalone partial prepending indentation to each line of partial is not supported", () => {
+  it("partial: indented standalone partial prepends indentation to each line of partial", () => {
     const partial = compile("line1\nline2");
-    assert.equal(render("  {{> partial}}\n", {}, { partial }), "line1\nline2");
+    assert.equal(render("  {{> partial}}\n", {}, { partial }), "  line1\n  line2");
   });
 
   it("partial: non-standalone partial does not strip surrounding whitespace", () => {

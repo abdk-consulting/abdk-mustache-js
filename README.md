@@ -168,10 +168,30 @@ Output (show = true):
   | after
 ```
 
-> **Note:** The spec also requires standalone partial tags to prepend their
-> leading whitespace as indentation to every line of the included partial.
-> This implementation does **not** support partial indentation — the partial
-> content is inserted as-is.
+When a standalone partial tag has leading whitespace, that whitespace is
+prepended to **every line** of the included partial's output, per the Mustache
+spec:
+
+```
+Template:
+  | before
+  {{> item}}
+  | after
+
+Partial ("item"):
+line1
+line2
+
+Output:
+  | before
+  line1
+  line2
+  | after
+```
+
+A partial that ends without a trailing newline has its last fragment indented
+but no newline is added. Non-standalone (inline) partials — where the tag
+shares a line with other content — are inserted as-is with no indentation.
 
 ### Whitespace inside tags
 
@@ -333,7 +353,7 @@ type CompiledTemplate = (
 | Standalone tag whitespace stripping | ✓ |
 | Whitespace before/after any tag sigil | ✓ (extension) |
 | Lambda sections (raw text + render callback) | ✗ (optional spec feature) |
-| Partial indentation (standalone partial prepends indent) | ✗ (intentionally omitted) |
+| Partial indentation (standalone partial prepends indent) | ✓ |
 
 ---
 

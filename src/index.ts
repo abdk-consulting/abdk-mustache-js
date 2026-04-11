@@ -17,8 +17,8 @@ function escapeRegExp(string: string): string {
 function compileTagRegExp(leftDelimiter: string, rightDelimiter: string): RegExp {
   const escapedLeftDelimiter = escapeRegExp(leftDelimiter);
   const escapedRightDelimiter = escapeRegExp(rightDelimiter);
-  return new RegExp(`${escapedLeftDelimiter}\\s*(\\{[^}]*\\}\\s*|[^{\\s].*?)${escapedRightDelimiter}`,
-    "gs");
+  return new RegExp(`${escapedLeftDelimiter}\\s*(\\{[^}]*\\}\\s*|[^{\\s][\\s\\S]*?)${escapedRightDelimiter}`,
+    "g");
 }
 
 export type CompiledTemplate = (
@@ -51,6 +51,7 @@ export function compile(template: string): CompiledTemplate {
   code += `const S=(x)=>x==null?"":e(x);`;
   code += `const o=(n)=>v.find(x=>x!=null&&typeof x==="object"&&n in x);`;
   code += `const P=(n)=>typeof p==="function"?p(n):p[n];`
+  code += `const I=(i,p)=>p.split(/\\r\\n|\\n\\r|\\n|\\r/).map(l=>i+l).join("\\n");`
   code += `let x;`;
   code += `let r="";`;
 
@@ -134,11 +135,17 @@ export function compile(template: string): CompiledTemplate {
         throw new Error("Partials cannot be nested inside parents");
       resolve(tagMatch[8]);
       code += `x=P(x);`;
-      code += `r+=x?x(v,p,{},e):"";`;
+      if (left < match.index) {
+        const indentation = template.slice(left, match.index);
+        code += `r+=x?I(${quoteString(indentation)},x(v,p,{},e)):"";`;
+      } else code += `r+=x?x(v,p,{},e):"";`;
     } else if (tagMatch[9]) { // Partial
       if (inParent) throw new Error("Partials cannot be nested inside parents");
       code += `x=P(${quoteString(tagMatch[9])});`;
-      code += `r+=x?x(v,p,{},e):"";`;
+      if (left < match.index) {
+        const indentation = template.slice(left, match.index);
+        code += `r+=x?I(${quoteString(indentation)},x(v,p,{},e)):"";`;
+      } else code += `r+=x?x(v,p,{},e):"";`;
     } else if (tagMatch[10]) { // Block
       if (inParent) {
         if (isIdentifier(tagMatch[10]))

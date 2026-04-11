@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.5] — 2026-04-11
+
+### Added
+
+- **Partial indentation** — a standalone partial tag whose line has leading
+  whitespace now prepends that whitespace to every line of the included
+  partial's output, per the Mustache spec.  Non-standalone (inline) partials
+  are unaffected.  Applies to both static (`{{> name}}`) and dynamic
+  (`{{> *name}}`) partial tags.
+
+---
+
 ## [1.0.4] — 2026-04-11
 
 ### Added
@@ -96,6 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero runtime dependencies
 - TypeScript declarations included
 
+[1.0.5]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.5
+[1.0.4]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.4
 [1.0.2]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.2
 [1.0.1]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.1
 [1.0.0]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.0
