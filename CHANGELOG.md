@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.4] — 2026-04-11
+
+### Added
+
+- **Standalone tag whitespace stripping** — section, inverted-section, comment,
+  set-delimiter, partial, block, and parent tags that appear alone on a line
+  (with only optional leading whitespace) now consume the entire line, including
+  leading whitespace and trailing newline (`\n` or `\r\n`), per the Mustache
+  spec.  Variable tags are never treated as standalone.
+- **Permissive whitespace inside tags** — spaces are now permitted before and
+  after any tag sigil and around the tag name: `{{ # section }}`,
+  `{{> partial }}`, `{{ = [ ] = }}`, etc.  Applies uniformly to all tag types.
+- **Function-based partial loader** — all four public functions
+  (`render`, `renderCompiled`, `renderAsync`, `renderCompiledAsync`) now accept
+  either a plain partial object *or* a single loader function
+  `(name) => template | null` (async for the async variants) in place of the
+  `partials` argument.  The loader is called at most once per partial name per
+  render call.
+- **Stricter parent-body validation** — inside a `{{< parent}}` body, sections,
+  variables, partials, and nested parents now raise a compile-time error instead
+  of being silently ignored.  Plain text and comments are still silently
+  discarded; block overrides (`{{$ block}}`) and set-delimiter tags are
+  processed normally.
+
+---
+
 ## [1.0.3] — 2026-04-11
 
 ### Fixed
