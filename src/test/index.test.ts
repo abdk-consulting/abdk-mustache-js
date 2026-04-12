@@ -403,6 +403,112 @@ describe("compile", () => {
         /Parents cannot be nested inside parents/
       );
     });
+
+    // --- Dynamic parent content rules (bug fix: inParent was not set for dynamic parents) ---
+
+    it("section inside dynamic parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< *name}}{{#section}}text{{/section}}{{/name}}"),
+        /Sections cannot be nested inside parents/
+      );
+    });
+
+    it("variable inside dynamic parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< *name}}{{var}}{{/name}}"),
+        /Variables cannot be nested inside parents/
+      );
+    });
+
+    it("partial inside dynamic parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< *name}}{{> partial}}{{/name}}"),
+        /Partials cannot be nested inside parents/
+      );
+    });
+
+    it("nested static parent inside dynamic parent throws at compile time", () => {
+      assert.throws(
+        () => compile("{{< *outer}}{{< inner}}{{/inner}}{{/outer}}"),
+        /Parents cannot be nested inside parents/
+      );
+    });
+
+    it("block override works inside dynamic parent", () => {
+      const parent = compile("{{$block}}Default{{/block}}");
+      assert.equal(
+        compile("{{< *name}}{{$block}}Override{{/block}}{{/name}}")
+          ([{ name: "parent" }], { parent }, {}, escape),
+        "Override"
+      );
+    });
+  });
+
+  describe("indentation", () => {
+    it("indents a single-line standalone static parent", () => {
+      const parent = compile("Hello!");
+      assert.equal(
+        compile("  {{< parent}}\n{{/parent}}")([{}], { parent }, {}, escape),
+        "  Hello!"
+      );
+    });
+
+    it("indents each line of a multi-line static parent", () => {
+      const parent = compile("line1\nline2\n");
+      assert.equal(
+        compile("  {{< parent}}\n{{/parent}}")([{}], { parent }, {}, escape),
+        "  line1\n  line2\n  "
+      );
+    });
+
+    it("indents a multi-line static parent with block override", () => {
+      const parent = compile("prefix\n{{$block}}Default{{/block}}\nsuffix\n");
+      assert.equal(
+        compile("  {{< parent}}\n{{$block}}Override{{/block}}\n{{/parent}}")
+          ([{}], { parent }, {}, escape),
+        "  prefix\n  Override\n  suffix\n  "
+      );
+    });
+
+    it("does not indent an inline (non-standalone) static parent", () => {
+      const parent = compile("Hi!");
+      assert.equal(
+        compile("Say: {{< parent}}{{/parent}} there")([{}], { parent }, {}, escape),
+        "Say: Hi! there"
+      );
+    });
+
+    it("indents a single-line standalone dynamic parent", () => {
+      const parent = compile("Hello!");
+      assert.equal(
+        compile("  {{< *name}}\n{{/name}}")([{ name: "parent" }], { parent }, {}, escape),
+        "  Hello!"
+      );
+    });
+
+    it("indents each line of a multi-line dynamic parent", () => {
+      const parent = compile("line1\nline2\n");
+      assert.equal(
+        compile("  {{< *name}}\n{{/name}}")([{ name: "parent" }], { parent }, {}, escape),
+        "  line1\n  line2\n  "
+      );
+    });
+
+    it("does not indent an inline (non-standalone) dynamic parent", () => {
+      const parent = compile("Hi!");
+      assert.equal(
+        compile("Say: {{< *name}}{{/name}} there")([{ name: "parent" }], { parent }, {}, escape),
+        "Say: Hi! there"
+      );
+    });
+
+    it("applies tab indentation to a static parent", () => {
+      const parent = compile("A\nB\n");
+      assert.equal(
+        compile("\t{{< parent}}\n{{/parent}}")([{}], { parent }, {}, escape),
+        "\tA\n\tB\n\t"
+      );
+    });
   });
 
   describe("set delimiters", () => {
