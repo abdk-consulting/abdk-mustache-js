@@ -644,6 +644,34 @@ describe("compile", () => {
     it("throws on nested unclosed section", () => {
       assert.throws(() => compile("{{#a}}{{#b}}content{{/a}}"), /Unmatched end tag/);
     });
+
+    it("throws on empty tag", () => {
+      assert.throws(() => compile("{{}}"), /Invalid tag/);
+    });
+
+    it("throws on whitespace-only tag", () => {
+      assert.throws(() => compile("{{  }}"), /Invalid tag/);
+    });
+
+    it("throws on section sigil with no name", () => {
+      assert.throws(() => compile("{{#}}"), /Invalid tag/);
+    });
+
+    it("throws on end-section sigil with no name", () => {
+      assert.throws(() => compile("{{/}}"), /Invalid tag/);
+    });
+
+    it("throws on partial sigil with no name", () => {
+      assert.throws(() => compile("{{>}}"), /Invalid tag/);
+    });
+
+    it("throws on block sigil with no name", () => {
+      assert.throws(() => compile("{{$}}"), /Invalid tag/);
+    });
+
+    it("throws on malformed set-delimiter tag (missing second delimiter)", () => {
+      assert.throws(() => compile("{{=abc}}"), /Invalid tag/);
+    });
   });
 });
 

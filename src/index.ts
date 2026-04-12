@@ -32,7 +32,7 @@ function compileTagRegExp(leftDelimiter: string, rightDelimiter: string)
   regExp += "|";
   regExp += "&\\s*(?<uvara>\\S+?)"; // Unescaped variable with &
   regExp += "|";
-  regExp += "![\\s\\S]*?"; // Comment
+  regExp += "!(?<cmt>[\\s\\S]*?)"; // Comment
   regExp += "|";
   regExp += ">\\s*\\*\\s*(?<dpt>\\S+?)"; // Dynamic Partial
   regExp += "|";
@@ -44,7 +44,9 @@ function compileTagRegExp(leftDelimiter: string, rightDelimiter: string)
   regExp += "|";
   regExp += "<\\s*(?<pn>\\S+?)"; // Parent
   regExp += "|";
-  regExp += "(?<var>\\S+?)"; // Variable
+  regExp += "(?<var>[^\\s=#^/{&!>$<]\\S*?)"; // Variable
+  regExp += "|";
+  regExp += "[\\s\\S]*?"; // Invalid Tag 
   regExp += ")";
   regExp += "\\s*?";
   regExp += escapeRegExp(rightDelimiter);
@@ -171,6 +173,8 @@ export function compile(template: string): CompiledTemplate {
         throw new Error("Variables cannot be nested inside parents");
       resolve(groups.uvara);
       code += `r+=s(x);`;
+    } else if (groups?.cmt) { // Comment
+      standalone();
     } else if (groups?.dpt) { // Dynamic partial
       const indentation = indent();
       if (inParent) throw new Error("Partials cannot be nested inside parents");
@@ -236,9 +240,7 @@ export function compile(template: string): CompiledTemplate {
         throw new Error("Variables cannot be nested inside parents");
       resolve(groups.var);
       code += `r+=S(x);`;
-    } else { // Comment
-      standalone();
-    }
+    } else throw new Error("Invalid tag: " + match[0]);
   }
   if (stack.length > 0) {
     const [startTag] = stack.pop()!;
