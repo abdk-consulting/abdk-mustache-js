@@ -369,6 +369,136 @@ type CompiledTemplate = (
 
 ---
 
+## Spec deviations
+
+This implementation intentionally differs from the
+[official Mustache spec](https://github.com/mustache/spec) in four areas.
+Each deviation is described below together with the rationale.
+
+### 1. Standalone tag detection
+
+**Spec behaviour:** The spec test suite includes cases where two tags appear on
+a single line and both are still treated as standalone, but no clear general
+rule is given for when a multi-tag line qualifies.
+
+**This implementation:** A tag is standalone **if and only if it is the sole
+printable element on its line** — i.e. it has only optional horizontal
+whitespace to its left (up to the start of the template or a preceding newline)
+and only optional horizontal whitespace to its right (up to the next newline
+or end of template).  If any other non-whitespace character appears on the
+same line, the tag is non-standalone, regardless of what the neighbouring
+content is.
+
+This rule is simple, predictable, and matches what the Mustache *documentation*
+says.  The same criterion is applied uniformly to every tag type; individual
+tag types may then handle the standalone status in their own way (e.g.
+variables are always non-standalone and never consume their line).
+
+To force a tag to be treated as non-standalone, place an empty comment next
+to it — no space is required inside the comment tag, `{{!}}` is sufficient:
+
+```
+{{#section}}{{!}}
+content
+{{/section}}
+```
+
+### 2. Indentation
+
+**Spec behaviour:** A standalone partial tag's leading whitespace is prepended
+to every line of the partial's output.  However, the spec does not require the
+template's own line terminator to be preserved when the partial is empty or
+missing, producing counter-intuitive results such as:
+
+```
+One
+{{>two}}
+Three
+```
+
+rendering as `"One\nTwoThree"` when `two` is `"Two"` (no trailing newline).
+
+**This implementation:** The template's newline after a standalone partial tag
+always appears in the output, independent of the partial's content.  For a
+standalone partial the tag's line is consumed up to (but not including) the
+line terminator, and the terminator remains part of the surrounding template
+text.  This means:
+
+- A partial with no trailing newline still ends up on its own line because the
+  template's newline follows it.
+- A partial with a trailing newline produces an **additional indented empty
+  line** before the template's own newline (the `/^/gm` replacement inserts
+  the indentation prefix after every embedded newline, including the last one).
+- A nullish / missing partial results in an indented empty line (just
+  the indentation prefix + the template's newline), not a completely blank
+  line.
+
+| Partial content | Template `"  {{> p}}\n"` renders as |
+|---|---|
+| `"foo"` | `"  foo\n"` |
+| `"foo\n"` | `"  foo\n  \n"` |
+| `""` / missing | `"  \n"` |
+
+The same behaviour applies to standalone parent tags (`{{< parent}}`).  For
+parent tags the indentation is taken from the **opening** `{{< parent}}` tag's
+position on its line; the position of the closing `{{/parent}}` tag has no
+effect on indentation.
+
+### 3. Block forwarding
+
+**Spec behaviour:** The spec implicitly expects block overrides to be
+forwarded automatically through an entire parent chain.  For example:
+
+```
+template:      {{<parent}}{{$a}}c{{/a}}{{/parent}}
+parent:        {{<older}}{{$a}}p{{/a}}{{/older}}
+older:         {{<grandParent}}{{$a}}o{{/a}}{{/grandParent}}
+grandParent:   {{$a}}g{{/a}}
+```
+
+The spec says the output should be `"c"`, meaning the override `"c"` from the
+top-level template is forwarded all the way through `parent` and `older` down
+to `grandParent`, overriding `"p"` and `"o"` along the way.
+
+**This implementation:** Blocks are **not** forwarded automatically.  Each
+`{{< parent}}` call passes only the blocks explicitly overridden in its own
+body.  When `parent` calls `older` and provides `{{$a}}p{{/a}}`, it passes
+`"p"` — there is no mechanism by which `"c"` from an outer caller can
+silently bypass `parent`'s own override.
+
+This matches a straightforward reading of the syntax: `{{< parent}}` with
+`{{$a}}p{{/a}}` inside it means "*call `parent`, passing `"p"` as block `a`*".
+The outer caller's value of `a` has already been consumed to produce `"p"`.
+
+To explicitly forward an outer block inward, use a nested block substitution
+inside the override body:
+
+```
+parent:   {{<older}}{{$a}}{{$a}}p{{/a}}{{/a}}{{/older}}
+```
+
+Here the outer `{{$a}}…{{/a}}` is the block being *passed* to `older`, and
+the inner `{{$a}}p{{/a}}` is a block *substitution* with default `"p"` —
+so if the caller supplied a value for `a`, it replaces `"p"`.
+
+### 4. Lambdas
+
+**Spec behaviour:** Lambda sections pass the raw (un-rendered) template
+source of the section body to the lambda function, along with a `render`
+callback so the lambda can choose whether and how to re-render it.  This
+requires the template source to be available at render time, which is
+fundamentally incompatible with ahead-of-time compilation.
+
+**This implementation:** Function values in the view are treated as
+**zero-argument lazy getters** — they are called with no arguments and their
+return value is used as the resolved property value.  This covers the most
+common lambda use-case (computed / deferred properties) without sacrificing
+the compiled-template performance model.  The spec's lambda section feature
+(raw text + `render` callback) is not supported; this is an optional spec
+feature and is noted as such in the compatibility table above.
+
+---
+
 ## License
 
 [MIT](LICENSE) © ABDK Consulting
