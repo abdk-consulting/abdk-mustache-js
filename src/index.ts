@@ -206,20 +206,28 @@ export function compile(template: string): CompiledTemplate {
         stack.push([groups.bl, () => code += `}`]);
       }
     } else if (groups?.dpn) { // Dynamic Parent
-      standalone();
+      const indentation = indent();
       if (inParent) throw new Error("Parents cannot be nested inside parents");
       resolve(groups.dpn);
       code += `x=P(x);`;
       code += `if(x)r+=x(v,p,{`;
-      stack.push([groups.dpn, () => code += `},e);`]);
+      inParent = true;
+      stack.push([groups.dpn, () => {
+        if (indentation)
+          code += `},e).replace(/^/gm,${quoteString(indentation)});`;
+        else code += `},e);`;
+        inParent = false;
+      }]);
     } else if (groups?.pn) { // Parent
-      standalone();
+      const indentation = indent();
       if (inParent) throw new Error("Parents cannot be nested inside parents");
       code += `x=P(${quoteString(groups.pn)});`;
       code += `if(x)r+=x(v,p,{`;
       inParent = true;
       stack.push([groups.pn, () => {
-        code += `},e);`;
+        if (indentation)
+          code += `},e).replace(/^/gm,${quoteString(indentation)});`;
+        else code += `},e);`;
         inParent = false;
       }]);
     } else if (groups?.var) { // Variable
