@@ -7,9 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.8] — 2026-04-11
+## [1.0.9] — unreleased
+
+### Added
+
+- **Parent tag indentation** — standalone `{{< parent}}` and `{{< *name}}`
+  (dynamic parent) tags now support the same indentation behaviour as partial
+  tags: the leading whitespace on the opening parent tag's line is prepended to
+  every line of the rendered parent output via
+  `String.replace(/^/gm, indentation)`.  Non-standalone (inline) parent tags
+  are unaffected.
+
+- **Spec-deviations section in README** — a new *Spec deviations* section
+  documents the four intentional departures from the official Mustache spec
+  (standalone detection rule, indentation semantics, block forwarding, and
+  lambda handling), each with rationale and examples.
+
+### Fixed
+
+- **`inParent` not set for dynamic parents** — when a `{{< *name}}` dynamic
+  parent tag was opened, the `inParent` flag was not set to `true`, so
+  forbidden content (sections, variables, partial tags, nested parents) inside
+  a dynamic parent body was not caught at compile time.  The flag is now set
+  correctly, matching the behaviour of static parent tags.
 
 ### Changed
+
+- **Comment tag uses a named capture group (`cmt`)** — the comment branch in
+  `compileTagRegExp` now uses `!(?<cmt>[\s\S]*?)` instead of `![\s\S]*?`.
+  The dispatch block explicitly tests `groups?.cmt` and falls through to the
+  new `Invalid tag` error for anything that matched none of the named groups.
+  No behavioural change for valid comment tags.
+
+- **Variable regex excludes tag-sigil characters** — the variable pattern has
+  been tightened from `\S+?` to `[^\s=#^/{&!>$<]\S*?`, preventing sigil
+  characters from being parsed as variable names and allowing malformed tags
+  to fall through to the new invalid-tag error handler.
+
+- **Invalid tags now throw at compile time** — previously, a tag whose content
+  matched none of the recognised patterns (empty tags `{{}}`, whitespace-only
+  tags, sigil-only tags with no name such as `{{#}}` or `{{>}}`, and
+  malformed set-delimiter tags) was silently dispatched to the comment handler
+  and ignored.  Such tags now throw `Error("Invalid tag: …")` immediately at
+  compile time.
+
+---
+
+## [1.0.8] — 2026-04-11
+
+### Changed (refactoring, no behavioural change)
 
 - **Tag-regexp refactored to use named capture groups** — `compileTagRegExp`
   now builds the pattern by concatenating named-group fragments for each tag
@@ -180,6 +226,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero runtime dependencies
 - TypeScript declarations included
 
+[1.0.9]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.9
+[1.0.8]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.8
 [1.0.7]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.7
 [1.0.6]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.6
 [1.0.5]: https://github.com/abdk-consulting/abdk-mustache-js/releases/tag/v1.0.5
